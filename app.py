@@ -80,26 +80,36 @@ def enviar_telegram(mensaje):
         return False
 
 # ==============================
-# ⚽ OBTENER PARTIDOS (Primera División)
+# ⚽ OBTENER PARTIDOS (CORREGIDO)
 # ==============================
 def obtener_partidos():
     hoy = datetime.utcnow().date()
     date_from = hoy.isoformat()
     date_to = (hoy + timedelta(days=15)).isoformat()
     
+    # LA URL DEBE TENER LA BARRA '/' DESPUÉS DEL .ORG Y EL '?' ANTES DE LAS FECHAS
     url = f"https://api.football-data.org{date_from}&dateTo={date_to}"
-    headers = {"X-Auth-Token": FOOTBALL_API_TOKEN, "Accept": "application/json"}
+    
+    headers = {
+        "X-Auth-Token": FOOTBALL_API_TOKEN, 
+        "Accept": "application/json"
+    }
 
     try:
         r = requests.get(url, headers=headers, timeout=20)
-        if r.status_code == 403: return "ERROR_403"
+        if r.status_code == 403: 
+            print("⚠️ Error 403: El plan gratuito no cubre esta liga.", flush=True)
+            return "ERROR_403"
         if r.status_code == 429:
+            print("⚠️ Rate limit (429). Esperando...", flush=True)
             time.sleep(60)
             return []
+        
         r.raise_for_status()
         return r.json().get("matches", [])
     except Exception as e:
-        print(f"❌ Error API: {e}", flush=True)
+        # Esto atrapará el NameResolutionError si la URL está mal escrita
+        print(f"❌ Error de conexión/URL: {e}", flush=True)
         return []
 
 # ==============================

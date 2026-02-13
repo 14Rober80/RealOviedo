@@ -48,28 +48,14 @@ threading.Thread(target=run_health_check, daemon=True).start()
 # 📡 ENVIAR MENSAJE TELEGRAM
 # ==============================
 def enviar_telegram(mensaje):
-    """
-    Envía mensaje a Telegram, pero si hay error de DNS o red no revienta el bucle principal.
-    Hace un pequeño retry local.
-    """
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": mensaje}
-
-    for intento in range(1, RETRY_COUNT + 1):
-        try:
-            r = requests.post(url, json=payload, timeout=30)
-            r.raise_for_status()
-            return True
-        except requests.exceptions.RequestException as e:
-            # Captura problemas de red, DNS, TLS, timeouts, etc.
-            print(f"❌ Error Telegram (intento {intento}/{RETRY_COUNT}): {e}", flush=True)
-            if isinstance(e.__cause__, NameResolutionError):
-                print("ℹ️ Parece un problema de DNS. Verifica salida a Internet o configuración de proxy.", flush=True)
-            if intento < RETRY_COUNT:
-                time.sleep(RETRY_SLEEP_SEC)
-    # No devolvemos excepción para no parar el proceso
-    return False
-
+    # Forzamos que el mensaje sea un string y si está vacío, enviamos un aviso
+    texto_seguro = str(mensaje) if mensaje else "Mensaje vacío detectado"
+    
+    url = f"https://api.telegram.org{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID, 
+        "text": texto_seguro
+    }
 # ==============================
 # ⚽ OBTENER PARTIDOS
 # ==============================

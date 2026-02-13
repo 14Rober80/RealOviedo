@@ -56,52 +56,34 @@ def crear_link_calendar(rival, fecha_dt):
 # 📡 ENVIAR MENSAJE TELEGRAM
 # ==============================
 def enviar_telegram(mensaje):
+    # Fíjate en la barra después de .org y la palabra bot
     url = f"https://api.telegram.org{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID, 
         "text": mensaje,
-        "parse_mode": "Markdown" # Permite links clicables [texto](url)
+        "parse_mode": "Markdown"
     }
-    try:
-        r = requests.post(url, json=payload, timeout=30)
-        r.raise_for_status()
-        return True
-    except Exception as e:
-        print(f"❌ Error Telegram: {e}", flush=True)
-        return False
 
 # ==============================
 # ⚽ OBTENER PARTIDOS (URL CORREGIDA)
 # ==============================
 def obtener_partidos():
-    hoy = datetime.utcnow().date()
+    from datetime import timezone
+    hoy = datetime.now(timezone.utc).date()
     date_from = hoy.isoformat()
     date_to = (hoy + timedelta(days=15)).isoformat()
     
-    # URL CONSTRUIDA CORRECTAMENTE CON /v4/ Y ? PARA PARÁMETROS
-    url = f"https://api.football-data.org{date_from}&dateTo={date_to}"
+    # URL fragmentada para evitar que se pegue al host
+    host = "https://api.football-data.org"
+    path = "/v4/competitions/PD/matches"
+    params = f"?dateFrom={date_from}&dateTo={date_to}"
+    url = host + path + params
     
     headers = {
         "X-Auth-Token": FOOTBALL_API_TOKEN, 
         "Accept": "application/json"
     }
-
-    try:
-        r = requests.get(url, headers=headers, timeout=20)
-        if r.status_code == 403:
-            print("⚠️ Error 403: El plan no cubre esta liga (PD).", flush=True)
-            return "ERROR_403"
-        if r.status_code == 429:
-            print("⚠️ Rate limit 429. Esperando 60s...", flush=True)
-            time.sleep(60)
-            return []
-        
-        r.raise_for_status()
-        data = r.json()
-        return data.get("matches", [])
-    except Exception as e:
-        print(f"❌ Error API Fútbol: {e}", flush=True)
-        return []
+    # ... resto de tu código ...
 
 # ==============================
 # ▶️ PROGRAMA PRINCIPAL

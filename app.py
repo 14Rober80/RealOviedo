@@ -107,7 +107,8 @@ def main():
                     home = p.get("homeTeam", {}).get("name", "")
                     away = p.get("awayTeam", {}).get("name", "")
 
-                    if partido_id in vistos or "Real Oviedo" not in [home, away]:
+                    #if partido_id in vistos or "Real Oviedo" not in [home, away]:
+                    if "Real Oviedo" not in [home, away]:
                         continue
 
                     # Procesar Fechas

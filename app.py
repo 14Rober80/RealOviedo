@@ -40,25 +40,16 @@ def run_health_check():
 threading.Thread(target=run_health_check, daemon=True).start()
 
 # ==============================
-# 📅 GENERADOR DE LINK GOOGLE CALENDAR
+# 📅 UTILIDAD GOOGLE CALENDAR
 # ==============================
-def crear_link_google_calendar(rival, fecha_utc):
-    """
-    Crea el enlace para añadir a Google Calendar.
-    Formato fecha: YYYYMMDDTHHMMSSZ
-    """
-    # Formateamos la hora de inicio y sumamos 2 horas para el final
-    start_time = fecha_utc.strftime('%Y%m%dT%H%M%SZ')
-    end_time = (fecha_utc + timedelta(hours=2)).strftime('%Y%m%dT%H%M%SZ')
+def crear_link_calendar(rival, fecha_dt):
+    """Genera link para añadir al calendario de Google."""
+    # Formato UTC requerido por Google: YYYYMMDDTHHMMSSZ
+    start_time = fecha_dt.strftime('%Y%m%dT%H%M%SZ')
+    end_time = (fecha_dt + timedelta(hours=2)).strftime('%Y%m%dT%H%M%SZ')
     
     titulo = urllib.parse.quote(f"⚽ Real Oviedo vs {rival}")
-    detalles = urllib.parse.quote("Aviso automático de tu Bot de Fútbol")
-    
-    # URL oficial de Google Calendar para eventos rápidos
-    url = (
-        f"https://www.google.com"
-        f"&text={titulo}&dates={start_time}/{end_time}&details={detalles}"
-    )
+    url = f"https://www.google.com{titulo}&dates={start_time}/{end_time}"
     return url
 
 # ==============================
@@ -69,7 +60,7 @@ def enviar_telegram(mensaje):
     payload = {
         "chat_id": TELEGRAM_CHAT_ID, 
         "text": mensaje,
-        "parse_mode": "Markdown" # IMPORTANTE para que el link sea clicable
+        "parse_mode": "Markdown" # Permite links clicables [texto](url)
     }
     try:
         r = requests.post(url, json=payload, timeout=30)
@@ -80,14 +71,14 @@ def enviar_telegram(mensaje):
         return False
 
 # ==============================
-# ⚽ OBTENER PARTIDOS (CORREGIDO)
+# ⚽ OBTENER PARTIDOS (URL CORREGIDA)
 # ==============================
 def obtener_partidos():
     hoy = datetime.utcnow().date()
     date_from = hoy.isoformat()
     date_to = (hoy + timedelta(days=15)).isoformat()
     
-    # LA URL DEBE TENER LA BARRA '/' DESPUÉS DEL .ORG Y EL '?' ANTES DE LAS FECHAS
+    # URL CONSTRUIDA CORRECTAMENTE CON /v4/ Y ? PARA PARÁMETROS
     url = f"https://api.football-data.org{date_from}&dateTo={date_to}"
     
     headers = {
@@ -97,26 +88,27 @@ def obtener_partidos():
 
     try:
         r = requests.get(url, headers=headers, timeout=20)
-        if r.status_code == 403: 
-            print("⚠️ Error 403: El plan gratuito no cubre esta liga.", flush=True)
+        if r.status_code == 403:
+            print("⚠️ Error 403: El plan no cubre esta liga (PD).", flush=True)
             return "ERROR_403"
         if r.status_code == 429:
-            print("⚠️ Rate limit (429). Esperando...", flush=True)
+            print("⚠️ Rate limit 429. Esperando 60s...", flush=True)
             time.sleep(60)
             return []
         
         r.raise_for_status()
-        return r.json().get("matches", [])
+        data = r.json()
+        return data.get("matches", [])
     except Exception as e:
-        # Esto atrapará el NameResolutionError si la URL está mal escrita
-        print(f"❌ Error de conexión/URL: {e}", flush=True)
+        print(f"❌ Error API Fútbol: {e}", flush=True)
         return []
 
 # ==============================
 # ▶️ PROGRAMA PRINCIPAL
 # ==============================
 def main():
-    print("🚀 Bot Real Oviedo iniciado (v1.8)...", flush=True)
+    print("🚀 Bot Real Oviedo iniciado (Primera División)...", flush=True)
+    enviar_telegram("✅ ¡Bot del Real Oviedo activo!")
     vistos = set()
 
     while True:
@@ -125,8 +117,9 @@ def main():
             partidos = obtener_partidos()
 
             if partidos == "ERROR_403":
-                print("⚠️ Plan API no cubre esta competición.", flush=True)
+                pass # Ya imprimió el error arriba
             elif partidos:
+                encontrados = 0
                 for p in partidos:
                     partido_id = p.get("id")
                     home = p.get("homeTeam", {}).get("name", "")
@@ -135,26 +128,30 @@ def main():
                     if partido_id in vistos or "Real Oviedo" not in [home, away]:
                         continue
 
-                    # Gestionar fechas
+                    # Procesar Fechas
                     utc_iso = p.get("utcDate")
                     fecha_utc = datetime.fromisoformat(utc_iso.replace("Z", "+00:00"))
-                    fecha_esp = fecha_utc.astimezone(ZoneInfo("Europe/Madrid"))
+                    
+                    try:
+                        fecha_esp = fecha_utc.astimezone(ZoneInfo("Europe/Madrid"))
+                    except:
+                        fecha_esp = fecha_utc
                     
                     rival = away if home == "Real Oviedo" else home
-                    
-                    # Generar enlace al calendario
-                    link_cal = crear_link_google_calendar(rival, fecha_utc)
+                    link_cal = crear_link_calendar(rival, fecha_utc)
 
                     mensaje = (
                         "📣 *¡Nuevo partido del Real Oviedo!*\n\n"
                         f"🆚 *Rival:* {rival}\n"
                         f"📅 *Fecha:* {fecha_esp.strftime('%d/%m/%Y %H:%M')}\n\n"
-                        f"➕ [Añadir a mi Google Calendar]({link_cal})"
+                        f"📅 [Añadir a mi Google Calendar]({link_cal})"
                     )
 
                     if enviar_telegram(mensaje):
                         vistos.add(partido_id)
-                        print(f"✔ Enviado: {rival}", flush=True)
+                        encontrados += 1
+
+                print(f"✔ Revisión OK. Partidos del Oviedo enviados: {encontrados}", flush=True)
 
         except Exception as e:
             print(f"❌ Error bucle: {e}", flush=True)

@@ -65,81 +65,118 @@ def enviar_telegram(mensaje):
     }
 
 # ==============================
-# ⚽ OBTENER PARTIDOS (URL CORREGIDA)
+# ⚽ OBTENER PARTIDOS (CON LOGS EXTRA)
 # ==============================
 def obtener_partidos():
     from datetime import timezone
-    hoy = datetime.now(timezone.utc).date()
-    date_from = hoy.isoformat()
-    date_to = (hoy + timedelta(days=15)).isoformat()
+    # Buscamos desde AYER para asegurar que pille el de hoy
+    ayer = (datetime.now(timezone.utc) - timedelta(days=1)).date()
+    date_from = ayer.isoformat()
+    date_to = (ayer + timedelta(days=30)).isoformat()
     
-    # URL fragmentada para evitar que se pegue al host
-    host = "https://api.football-data.org"
-    path = "/v4/competitions/PD/matches"
-    params = f"?dateFrom={date_from}&dateTo={date_to}"
-    url = host + path + params
-    
-    headers = {
-        "X-Auth-Token": FOOTBALL_API_TOKEN, 
-        "Accept": "application/json"
-    }
-    # ... resto de tu código ...
+    url = f"https://api.football-data.org{date_from}&dateTo={date_to}"
+    headers = {"X-Auth-Token": FOOTBALL_API_TOKEN, "Accept": "application/json"}
 
+    try:
+        r = requests.get(url, headers=headers, timeout=20)
+        print(f"📡 API responde con Status: {r.status_code}", flush=True)
+        
+        if r.status_code != 200:
+            print(f"❌ Error API: {r.text}", flush=True)
+            return []
+
+        data = r.json()
+        partidos = data.get("matches", [])
+        print(f"📊 Total partidos recibidos de la API (toda la liga): {len(partidos)}", flush=True)
+        return partidos
+    except Exception as e:
+        print(f"❌ Fallo total en la llamada API: {e}", flush=True)
+        return []
 # ==============================
 # ▶️ PROGRAMA PRINCIPAL
 # ==============================
+# ==============================
+# ⚽ OBTENER PARTIDOS (CON LOGS EXTRA)
+# ==============================
+def obtener_partidos():
+    from datetime import timezone
+    # Buscamos desde AYER para asegurar que pille el de hoy
+    ayer = (datetime.now(timezone.utc) - timedelta(days=1)).date()
+    date_from = ayer.isoformat()
+    date_to = (ayer + timedelta(days=30)).isoformat()
+    
+    url = f"https://api.football-data.org{date_from}&dateTo={date_to}"
+    headers = {"X-Auth-Token": FOOTBALL_API_TOKEN, "Accept": "application/json"}
+
+    try:
+        r = requests.get(url, headers=headers, timeout=20)
+        print(f"📡 API responde con Status: {r.status_code}", flush=True)
+        
+        if r.status_code != 200:
+            print(f"❌ Error API: {r.text}", flush=True)
+            return []
+
+        data = r.json()
+        partidos = data.get("matches", [])
+        print(f"📊 Total partidos recibidos de la API (toda la liga): {len(partidos)}", flush=True)
+        return partidos
+    except Exception as e:
+        print(f"❌ Fallo total en la llamada API: {e}", flush=True)
+        return []
+
+# ==============================
+# ▶️ PROGRAMA PRINCIPAL (CON LOGS DE FILTRO)
+# ==============================
 def main():
-    print("🚀 Bot Real Oviedo iniciado (Primera División)...", flush=True)
-    enviar_telegram("✅ ¡Bot del Real Oviedo activo!")
+    print("🚀 Bot iniciado. Vigilando al Real Oviedo...", flush=True)
     vistos = set()
 
     while True:
         try:
-            print(f"🔄 Revisando ({datetime.now().strftime('%H:%M:%S')})...", flush=True)
+            print(f"\n--- 🔄 NUEVA REVISIÓN ({datetime.now().strftime('%H:%M:%S')}) ---", flush=True)
             partidos = obtener_partidos()
 
-            if partidos == "ERROR_403":
-                pass # Ya imprimió el error arriba
-            elif partidos:
-                encontrados = 0
-                for p in partidos:
+            encontrados_oviedo = 0
+            for p in partidos:
+                home = p.get("homeTeam", {}).get("name", "")
+                away = p.get("awayTeam", {}).get("name", "")
+                
+                # LOG DE DEPURACIÓN: Ver cada partido que procesa
+                # print(f"DEBUG: Procesando {home} vs {away}", flush=True)
+
+                if "Oviedo" in home or "Oviedo" in away:
+                    encontrados_oviedo += 1
                     partido_id = p.get("id")
-                    home = p.get("homeTeam", {}).get("name", "")
-                    away = p.get("awayTeam", {}).get("name", "")
+                    
+                    print(f"💙 ¡PARTIDO DEL OVIEDO DETECTADO!: {home} vs {away} (ID: {partido_id})", flush=True)
 
-                    #if partido_id in vistos or "Real Oviedo" not in [home, away]:
-                    if "Real Oviedo" not in [home, away]:
-                        continue
+                    # Si quieres que te avise SIEMPRE para probar, comenta la línea de 'vistos'
+                    # if partido_id in vistos: continue 
 
-                    # Procesar Fechas
                     utc_iso = p.get("utcDate")
                     fecha_utc = datetime.fromisoformat(utc_iso.replace("Z", "+00:00"))
-                    
-                    try:
-                        fecha_esp = fecha_utc.astimezone(ZoneInfo("Europe/Madrid"))
-                    except:
-                        fecha_esp = fecha_utc
-                    
-                    rival = away if home == "Real Oviedo" else home
+                    rival = away if "Oviedo" in home else home
                     link_cal = crear_link_calendar(rival, fecha_utc)
 
                     mensaje = (
                         "📣 *¡Nuevo partido del Real Oviedo!*\n\n"
                         f"🆚 *Rival:* {rival}\n"
-                        f"📅 *Fecha:* {fecha_esp.strftime('%d/%m/%Y %H:%M')}\n\n"
+                        f"📅 *Fecha:* {fecha_utc.strftime('%d/%m/%Y %H:%M')} UTC\n\n"
                         f"📅 [Añadir a mi Google Calendar]({link_cal})"
                     )
 
+                    print(f"📤 Intentando enviar a Telegram...", flush=True)
                     if enviar_telegram(mensaje):
+                        print(f"✅ Envío exitoso a Telegram.", flush=True)
                         vistos.add(partido_id)
-                        encontrados += 1
+                    else:
+                        print(f"❌ Falló el envío a Telegram.", flush=True)
 
-                print(f"✔ Revisión OK. Partidos del Oviedo enviados: {encontrados}", flush=True)
+            if encontrados_oviedo == 0:
+                print("ℹ️ No se encontró ningún partido del Oviedo en la lista recibida.", flush=True)
 
         except Exception as e:
-            print(f"❌ Error bucle: {e}", flush=True)
+            print(f"❌ Error en el bucle principal: {e}", flush=True)
 
+        print(f"😴 Durmiendo {CHECK_MINUTES} min...", flush=True)
         time.sleep(CHECK_MINUTES * 60)
-
-if __name__ == "__main__":
-    main()

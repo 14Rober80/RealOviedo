@@ -6,7 +6,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# Forzar logs instantáneos
+# Forzar logs instantáneos en Render
 os.environ['PYTHONUNBUFFERED'] = '1'
 
 # ==============================
@@ -54,47 +54,46 @@ def enviar_telegram(mensaje):
 # ▶️ PROGRAMA PRINCIPAL
 # ==============================
 def main():
-    print("🚀 Bot Real Oviedo v2.0 arrancando...", flush=True)
+    print("🚀 Bot Real Oviedo v2.1 arrancando...", flush=True)
     threading.Thread(target=run_health_check, daemon=True).start()
     
     vistos = set()
 
     while True:
         try:
-            print(f"\n🔄 REVISIÓN: {datetime.now().strftime('%H:%M:%S')}", flush=True)
+            print(f"\n--- 🔄 NUEVA REVISIÓN: {datetime.now().strftime('%H:%M:%S')} ---", flush=True)
             
-            # 1. FECHAS (Corregido para evitar el 'deprecated' de utcnow)
+            # 1. FECHAS
             ahora_utc = datetime.now(timezone.utc)
             ayer = (ahora_utc - timedelta(days=1)).strftime('%Y-%m-%d')
             futuro = (ahora_utc + timedelta(days=30)).strftime('%Y-%m-%d')
             
-            # 2. URL CONSTRUIDA DE FORMA SEGURA (Evita NameResolutionError)
-            # Usamos params separados para que 'requests' monte la URL correctamente
+            # 2. PETICIÓN API SEGURA
             url_base = "https://api.football-data.org"
-            parametros = {
-                "dateFrom": ayer,
-                "dateTo": futuro
-            }
-            headers = {
-                "X-Auth-Token": FOOTBALL_API_TOKEN, 
-                "Accept": "application/json"
-            }
+            parametros = {"dateFrom": ayer, "dateTo": futuro}
+            headers = {"X-Auth-Token": FOOTBALL_API_TOKEN, "Accept": "application/json"}
             
-            print(f"📡 Solicitando partidos desde {ayer} hasta {futuro}...", flush=True)
+            print(f"📡 Solicitando partidos ({ayer} al {futuro})...", flush=True)
             
-            # Dejamos que la librería 'requests' gestione la unión de la URL y los parámetros
             r = requests.get(url_base, headers=headers, params=parametros, timeout=25)
-            
-            if r.status_code != 200:
-                print(f"⚠️ Error API {r.status_code}: {r.text}", flush=True)
-                partidos = []
+            partidos = []
+
+            # Manejo de errores de la API
+            if r.status_code == 429:
+                print("⚠️ API saturada (Rate Limit). Esperando al siguiente ciclo...", flush=True)
+            elif r.status_code != 200:
+                print(f"⚠️ Error API {r.status_code}: {r.text[:200]}", flush=True)
             else:
-                data = r.json()
-                partidos = data.get("matches", [])
+                try:
+                    data = r.json()
+                    partidos = data.get("matches", [])
+                except Exception:
+                    print("❌ Error: La API no devolvió JSON. Respuesta inesperada.", flush=True)
             
             print(f"📊 Partidos totales en liga recibidos: {len(partidos)}", flush=True)
 
-            # 3. FILTRADO OVIEDO
+            # 3. FILTRADO Y ENVÍO
+            encontrados = 0
             for p in partidos:
                 home = p.get("homeTeam", {}).get("name", "")
                 away = p.get("awayTeam", {}).get("name", "")
@@ -102,12 +101,11 @@ def main():
                 if "Oviedo" in home or "Oviedo" in away:
                     p_id = p.get("id")
                     
-                    # COMENTA LA SIGUIENTE LÍNEA SI QUIERES QUE TE LLEGUEN AUNQUE YA SE ENVIARAN
+                    # SI QUIERES FORZAR EL ENVÍO AHORA, COMENTA LA LÍNEA DE ABAJO:
                     # if p_id in vistos: continue
                     
                     print(f"💙 ¡DETECTADO!: {home} vs {away}", flush=True)
                     
-                    # Fecha y link calendario
                     utc_str = p.get("utcDate")
                     dt_utc = datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
                     
@@ -128,9 +126,13 @@ def main():
                     if enviar_telegram(mensaje):
                         print(f"✅ Telegram OK: {rival}", flush=True)
                         vistos.add(p_id)
+                        encontrados += 1
+
+            if encontrados == 0 and len(partidos) > 0:
+                print("ℹ️ No hay partidos del Oviedo en la lista de hoy.", flush=True)
 
         except Exception as e:
-            print(f"❌ Error en el bucle: {e}", flush=True)
+            print(f"❌ Error crítico: {e}", flush=True)
         
         print(f"😴 Esperando {CHECK_MINUTES} minutos...", flush=True)
         time.sleep(CHECK_MINUTES * 60)
